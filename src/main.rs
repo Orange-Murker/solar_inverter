@@ -1,8 +1,7 @@
 #![no_std]
 #![no_main]
 #![feature(type_alias_impl_trait)]
-#![feature(const_for)]
-#![feature(const_fn_floating_point_arithmetic)]
+#![allow(clippy::empty_loop)]
 
 mod ledc;
 
