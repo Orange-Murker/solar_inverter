@@ -1,0 +1,17 @@
+[package]
+name = "solar_inverter"
+version = "0.1.0"
+authors = ["Orange_Murker"]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+hal = { package = "esp32c3-hal", version = "0.13.0", features = ["async", "embassy", "embassy-time-systick"]}
+esp-backtrace = { version = "0.9.0", features = ["esp32c3", "panic-handler", "exception-handler", "print-uart"] }
+esp-println = { version = "0.7.0", features = ["esp32c3"] }
+# log = { version = "0.4.18" }
+# embassy-executor = { version = "0.3.3", features = ["nightly", "integrated-timers", "arch-riscv32", "executor-thread"] }
+# embassy-time = "0.1.5"
+idsp = "0.13.0"
+fugit = "0.3.7"
+critical-section = "1.1.2"
