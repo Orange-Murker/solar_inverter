@@ -29,7 +29,6 @@ use hal::{
     peripherals::{Interrupt, Peripherals},
     prelude::*,
     systimer::SystemTimer,
-    Delay,
 };
 
 // PWM frequency should ideally be a multiple of the sine wave frequency
@@ -50,7 +49,6 @@ async fn main(_spawner: Spawner) -> ! {
     let clocks = ClockControl::boot_defaults(system.clock_control).freeze();
 
     embassy::init(&clocks, SystemTimer::new(peripherals.SYSTIMER));
-    let mut delay = Delay::new(&clocks);
 
     let io = IO::new(peripherals.GPIO, peripherals.IO_MUX);
     let pwm = io.pins.gpio6.into_push_pull_output();

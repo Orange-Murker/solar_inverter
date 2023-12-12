@@ -24,7 +24,6 @@ fn LEDC() {
     critical_section::with(|cs| {
         if *SYNC_TIMEOUT.borrow_ref(cs) {
             ledc.ch0_conf0.modify(|_, w| w.sig_out_en().clear_bit());
-            return;
         } else {
             ledc.ch0_conf0.modify(|_, w| w.sig_out_en().set_bit());
         }
