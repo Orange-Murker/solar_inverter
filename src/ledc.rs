@@ -1,24 +1,15 @@
+use core::cell::RefCell;
+
+use critical_section::Mutex;
 use hal::{peripherals::Peripherals, prelude::*};
 
-use crate::{PWM_FREQ, SINE_FREQ};
+use crate::{PWM_FREQ, SINE_FREQ, TEST_PIN};
 
 const WAVE_UPDATES_PER_SINE_PERIOD: u32 = PWM_FREQ.to_Hz() / SINE_FREQ.to_Hz();
 
 const PHASE_CHANGE_PER_UPDATE: u32 = i32::MAX as u32 / WAVE_UPDATES_PER_SINE_PERIOD;
 
-static mut CURRENT_STEP: usize = 0;
-static mut CURRENT_PHASE: i32 = 0;
-
-// These functions are here for debugging purposes.
-// This is faster than using a critical section.
-fn set_pin_unsafe(pin: u32) {
-    let gpio = unsafe { Peripherals::steal().GPIO };
-    gpio.out_w1ts.write(|w| unsafe { w.bits(1 << pin) });
-}
-fn unset_pin_unsafe(pin: u32) {
-    let gpio = unsafe { Peripherals::steal().GPIO };
-    gpio.out_w1tc.write(|w| unsafe { w.bits(1 << pin) });
-}
+pub static CURRENT_PHASE: Mutex<RefCell<i32>> = Mutex::new(RefCell::new(0));
 
 #[interrupt]
 fn LEDC() {
@@ -27,29 +18,20 @@ fn LEDC() {
     let ledc = unsafe { Peripherals::steal().LEDC };
     // Clear the interrupt
     ledc.int_clr.write(|w| w.lstimer0_ovf_int_clr().set_bit());
-    set_pin_unsafe(8);
 
-    let i = unsafe { &mut CURRENT_STEP };
-    // This is fine because no other interrupt is using this and this interrupt has the highest
-    // or the same priority as other interrupts
-    let phase = unsafe { &mut CURRENT_PHASE };
+    critical_section::with(|cs| {
+        TEST_PIN
+            .borrow_ref_mut(cs)
+            .as_mut()
+            .unwrap()
+            .set_high()
+            .unwrap();
+    });
 
-    // Technically we could keep incrementing the step counter forever but we don't want to
-    // overflow the u32 so we reset it to 0 after one cycle
-    if *i >= WAVE_UPDATES_PER_SINE_PERIOD as usize {
-        *i = 0;
-    }
+    let phase = critical_section::with(|cs| CURRENT_PHASE.take(cs));
 
-    let sin = idsp::cossin(*phase).1 as i64;
+    let sin = idsp::cossin(phase).1 as i64;
     let duty = ((sin.abs() * 255) / i32::MAX as i64) as u32;
-
-    // let duty = if *i % 2 == 0 {
-    //     192
-    // } else {
-    //     64
-    // };
-
-    // ledc.ch0_conf0.modify(|_, w| w.sig_out_en().set_bit());
 
     ledc.ch0_duty.write(|w| unsafe { w.bits(duty << 4) });
     ledc.ch0_conf1.write(|w| unsafe {
@@ -66,8 +48,17 @@ fn LEDC() {
     });
     ledc.ch0_conf0.modify(|_, w| w.para_up().set_bit());
 
-    *phase = phase.wrapping_add(PHASE_CHANGE_PER_UPDATE as i32);
-    *i += 1;
+    let new_phase = phase.wrapping_add(PHASE_CHANGE_PER_UPDATE as i32);
+    critical_section::with(|cs| {
+        CURRENT_PHASE.replace(cs, new_phase);
+    });
 
-    unset_pin_unsafe(8);
+    critical_section::with(|cs| {
+        TEST_PIN
+            .borrow_ref_mut(cs)
+            .as_mut()
+            .unwrap()
+            .set_low()
+            .unwrap();
+    });
 }

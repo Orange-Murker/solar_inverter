@@ -7,9 +7,12 @@ mod ledc;
 
 use core::cell::RefCell;
 
+use crate::ledc::CURRENT_PHASE;
 use critical_section::Mutex;
-// use embassy_executor::Spawner;
+use embassy_executor::Spawner;
+use embedded_hal_async::digital::Wait;
 use esp_backtrace as _;
+use esp_println::println;
 use fugit::{HertzU32, Rate};
 use hal::{
     clock::ClockControl,
@@ -24,31 +27,37 @@ use hal::{
     peripherals::{Interrupt, Peripherals},
     prelude::*,
     systimer::SystemTimer,
+    Delay,
 };
 
 // PWM frequency should ideally be a multiple of the sine wave frequency
-const SINE_FREQ: HertzU32 = Rate::<u32, 1, 1>::Hz(50);
+const SINE_FREQ: HertzU32 = Rate::<u32, 1, 1>::Hz(1);
 const PWM_FREQ: HertzU32 = Rate::<u32, 1, 1>::kHz(18);
 
 static TEST_PIN: Mutex<RefCell<Option<Gpio8<Output<PushPull>>>>> = Mutex::new(RefCell::new(None));
 
-// #[main]
-// async fn main(_spawner: Spawner) -> ! {
-#[entry]
-fn main() -> ! {
+#[main]
+async fn main(_spawner: Spawner) -> ! {
+    // #[entry]
+    // fn main() -> ! {
     let peripherals = Peripherals::take();
     let system = peripherals.SYSTEM.split();
     let clocks = ClockControl::boot_defaults(system.clock_control).freeze();
 
     embassy::init(&clocks, SystemTimer::new(peripherals.SYSTIMER));
+    let mut delay = Delay::new(&clocks);
 
     let io = IO::new(peripherals.GPIO, peripherals.IO_MUX);
     let pwm = io.pins.gpio6.into_push_pull_output();
 
     let test_pin = io.pins.gpio8.into_push_pull_output();
     critical_section::with(|cs| {
-        TEST_PIN.borrow(cs).replace(Some(test_pin));
+        TEST_PIN.replace(cs, Some(test_pin));
     });
+
+    let mut zero_cross_pin = io.pins.gpio10.into_floating_input();
+    interrupt::enable(Interrupt::GPIO, Priority::Priority2)
+        .expect("Could not enable the GPIO interrupt");
 
     // Using a scope to make sure that the LEDC struct cannot be used after setting up the peripheral
     {
@@ -77,15 +86,28 @@ fn main() -> ! {
     }
 
     {
-        // LEDC does not implement into_inner() so we have to steal it here
+        // The peripherals doe not implement into_inner() so we have to steal it here
         // This is fine because we only have one reference as the old reference is not accessible anymore
         let ledc = unsafe { Peripherals::steal().LEDC };
 
         // Enable the LEDC interrupt on every timer overflow
         ledc.int_ena
             .modify(|_, w| w.lstimer0_ovf_int_ena().set_bit());
-        interrupt::enable(Interrupt::LEDC, Priority::Priority4).unwrap();
+        interrupt::enable(Interrupt::LEDC, Priority::Priority5)
+            .expect("Could not enable the LEDC interrupt");
 
-        loop {}
+        loop {
+            zero_cross_pin.wait_for_any_edge().await.unwrap();
+            delay.delay_ms(1u32);
+            if zero_cross_pin.is_input_high() {
+                critical_section::with(|cs| {
+                    CURRENT_PHASE.replace(cs, 0);
+                });
+                println!("HIGH");
+            } else {
+                println!("LOW");
+            }
+            delay.delay_ms(1u32);
+        }
     }
 }
