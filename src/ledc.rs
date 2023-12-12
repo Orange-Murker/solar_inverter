@@ -10,6 +10,7 @@ const WAVE_UPDATES_PER_SINE_PERIOD: u32 = PWM_FREQ.to_Hz() / SINE_FREQ.to_Hz();
 const PHASE_CHANGE_PER_UPDATE: u32 = i32::MAX as u32 / WAVE_UPDATES_PER_SINE_PERIOD;
 
 pub static CURRENT_PHASE: Mutex<RefCell<i32>> = Mutex::new(RefCell::new(0));
+pub static SYNC_TIMEOUT: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(true));
 
 #[interrupt]
 fn LEDC() {
@@ -18,6 +19,16 @@ fn LEDC() {
     let ledc = unsafe { Peripherals::steal().LEDC };
     // Clear the interrupt
     ledc.int_clr.write(|w| w.lstimer0_ovf_int_clr().set_bit());
+
+    // Disable the output on timeout
+    critical_section::with(|cs| {
+        if *SYNC_TIMEOUT.borrow_ref(cs) {
+            ledc.ch0_conf0.modify(|_, w| w.sig_out_en().clear_bit());
+            return;
+        } else {
+            ledc.ch0_conf0.modify(|_, w| w.sig_out_en().set_bit());
+        }
+    });
 
     critical_section::with(|cs| {
         TEST_PIN

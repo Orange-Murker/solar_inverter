@@ -7,9 +7,11 @@ mod ledc;
 
 use core::cell::RefCell;
 
-use crate::ledc::CURRENT_PHASE;
+use crate::ledc::{CURRENT_PHASE, SYNC_TIMEOUT};
 use critical_section::Mutex;
 use embassy_executor::Spawner;
+use embassy_futures::select::{select, Either};
+use embassy_time::{Duration, Timer};
 use embedded_hal_async::digital::Wait;
 use esp_backtrace as _;
 use esp_println::println;
@@ -32,6 +34,9 @@ use hal::{
 
 // PWM frequency should ideally be a multiple of the sine wave frequency
 const SINE_FREQ: HertzU32 = Rate::<u32, 1, 1>::Hz(1);
+const SINE_PERIOD: Duration = Duration::from_micros(1_000_000 / SINE_FREQ.to_Hz() as u64);
+// 5% margin
+const PERIOD_MARGIN: Duration = Duration::from_micros(SINE_PERIOD.as_micros() / 20);
 const PWM_FREQ: HertzU32 = Rate::<u32, 1, 1>::kHz(18);
 
 static TEST_PIN: Mutex<RefCell<Option<Gpio8<Output<PushPull>>>>> = Mutex::new(RefCell::new(None));
@@ -95,19 +100,34 @@ async fn main(_spawner: Spawner) -> ! {
             .modify(|_, w| w.lstimer0_ovf_int_ena().set_bit());
         interrupt::enable(Interrupt::LEDC, Priority::Priority5)
             .expect("Could not enable the LEDC interrupt");
+    }
 
-        loop {
-            zero_cross_pin.wait_for_any_edge().await.unwrap();
-            delay.delay_ms(1u32);
-            if zero_cross_pin.is_input_high() {
+    loop {
+        let zero_cross_future = zero_cross_pin.wait_for_any_edge();
+        let timeout_future = Timer::after(SINE_PERIOD.checked_add(PERIOD_MARGIN).unwrap());
+        let select_result = select(zero_cross_future, timeout_future).await;
+        match select_result {
+            Either::First(zero_cross_future) => {
+                zero_cross_future.unwrap();
+
                 critical_section::with(|cs| {
-                    CURRENT_PHASE.replace(cs, 0);
+                    SYNC_TIMEOUT.replace(cs, false);
                 });
-                println!("HIGH");
-            } else {
-                println!("LOW");
+                if zero_cross_pin.is_input_high() {
+                    critical_section::with(|cs| {
+                        CURRENT_PHASE.replace(cs, 0);
+                    });
+                    println!("HIGH");
+                } else {
+                    println!("LOW");
+                }
             }
-            delay.delay_ms(1u32);
+            Either::Second(_) => {
+                critical_section::with(|cs| {
+                    SYNC_TIMEOUT.replace(cs, true);
+                });
+                println!("Timeout");
+            }
         }
     }
 }
