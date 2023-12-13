@@ -18,14 +18,14 @@ fn LEDC() {
     // and this is the only interrupt that is using the LEDC peripheral
     let ledc = unsafe { Peripherals::steal().LEDC };
     // Clear the interrupt
-    ledc.int_clr.write(|w| w.lstimer0_ovf_int_clr().set_bit());
+    ledc.int_clr().write(|w| w.lstimer0_ovf_int_clr().set_bit());
 
     // Disable the output on timeout
     critical_section::with(|cs| {
         if *SYNC_TIMEOUT.borrow_ref(cs) {
-            ledc.ch0_conf0.modify(|_, w| w.sig_out_en().clear_bit());
+            ledc.ch0_conf0().modify(|_, w| w.sig_out_en().clear_bit());
         } else {
-            ledc.ch0_conf0.modify(|_, w| w.sig_out_en().set_bit());
+            ledc.ch0_conf0().modify(|_, w| w.sig_out_en().set_bit());
         }
     });
 
@@ -43,8 +43,8 @@ fn LEDC() {
     let sin = idsp::cossin(phase).1 as i64;
     let duty = ((sin.abs() * 255) / i32::MAX as i64) as u32;
 
-    ledc.ch0_duty.write(|w| unsafe { w.bits(duty << 4) });
-    ledc.ch0_conf1.write(|w| unsafe {
+    ledc.ch0_duty().write(|w| unsafe { w.bits(duty << 4) });
+    ledc.ch0_conf1().write(|w| unsafe {
         w.duty_start()
             .set_bit()
             .duty_inc()
@@ -56,7 +56,7 @@ fn LEDC() {
             .duty_scale()
             .bits(0x0)
     });
-    ledc.ch0_conf0.modify(|_, w| w.para_up().set_bit());
+    ledc.ch0_conf0().modify(|_, w| w.para_up().set_bit());
 
     let new_phase = phase.wrapping_add(PHASE_CHANGE_PER_UPDATE as i32);
     critical_section::with(|cs| {

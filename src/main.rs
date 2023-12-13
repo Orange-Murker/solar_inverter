@@ -14,6 +14,7 @@ use embassy_futures::select::{select, Either};
 use embassy_time::{Duration, Timer};
 use embedded_hal_async::digital::Wait;
 use esp_backtrace as _;
+use esp_hal_smartled::{smartLedBuffer, SmartLedsAdapter};
 use esp_println::println;
 use fugit::{HertzU32, Rate};
 use hal::{
@@ -29,7 +30,10 @@ use hal::{
     peripherals::{Interrupt, Peripherals},
     prelude::*,
     systimer::SystemTimer,
+    Rmt,
 };
+use smart_leds::{brightness, gamma};
+use smart_leds_trait::{SmartLedsWrite, RGB};
 
 // PWM frequency should ideally be a multiple of the sine wave frequency
 const SINE_FREQ: HertzU32 = Rate::<u32, 1, 1>::Hz(1);
@@ -51,6 +55,10 @@ async fn main(_spawner: Spawner) -> ! {
     embassy::init(&clocks, SystemTimer::new(peripherals.SYSTIMER));
 
     let io = IO::new(peripherals.GPIO, peripherals.IO_MUX);
+    let rmt = Rmt::new(peripherals.RMT, 80u32.MHz(), &clocks).expect("Could not initialize RMT");
+    let rmt_buffer = smartLedBuffer!(1);
+    let mut led = SmartLedsAdapter::new(rmt.channel0, io.pins.gpio7, rmt_buffer);
+
     let pwm = io.pins.gpio6.into_push_pull_output();
 
     let test_pin = io.pins.gpio8.into_push_pull_output();
@@ -94,7 +102,7 @@ async fn main(_spawner: Spawner) -> ! {
         let ledc = unsafe { Peripherals::steal().LEDC };
 
         // Enable the LEDC interrupt on every timer overflow
-        ledc.int_ena
+        ledc.int_ena()
             .modify(|_, w| w.lstimer0_ovf_int_ena().set_bit());
         interrupt::enable(Interrupt::LEDC, Priority::Priority5)
             .expect("Could not enable the LEDC interrupt");
@@ -119,11 +127,21 @@ async fn main(_spawner: Spawner) -> ! {
                 } else {
                     println!("LOW");
                 }
+                led.write(brightness(
+                    gamma([RGB { r: 0, g: 255, b: 0 }].iter().cloned()),
+                    50,
+                ))
+                .unwrap();
             }
             Either::Second(_) => {
                 critical_section::with(|cs| {
                     SYNC_TIMEOUT.replace(cs, true);
                 });
+                led.write(brightness(
+                    gamma([RGB { r: 255, g: 0, b: 0 }].iter().cloned()),
+                    50,
+                ))
+                .unwrap();
                 println!("Timeout");
             }
         }
