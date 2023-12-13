@@ -4,6 +4,7 @@
 #![allow(clippy::empty_loop)]
 
 mod ledc;
+mod mppt;
 
 use core::cell::RefCell;
 
