@@ -15,7 +15,7 @@ use embassy_time::{Duration, Timer};
 use embedded_hal_async::digital::Wait;
 use esp_backtrace as _;
 use esp_hal_smartled::{smartLedBuffer, SmartLedsAdapter};
-use esp_println::println;
+// use esp_println::println;
 use fugit::{HertzU32, Rate};
 use hal::{
     clock::ClockControl,

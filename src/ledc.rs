@@ -6,7 +6,7 @@ use hal::{
     prelude::*,
 };
 
-use crate::{PWM_FREQ, SINE_FREQ, TEST_PIN};
+use crate::{PWM_FREQ, SINE_FREQ};
 
 const WAVE_UPDATES_PER_SINE_PERIOD: u32 = PWM_FREQ.to_Hz() / SINE_FREQ.to_Hz();
 
