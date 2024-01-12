@@ -36,11 +36,11 @@ use smart_leds::{brightness, gamma};
 use smart_leds_trait::{SmartLedsWrite, RGB};
 
 // PWM frequency should ideally be a multiple of the sine wave frequency
-const SINE_FREQ: HertzU32 = Rate::<u32, 1, 1>::Hz(1);
+const SINE_FREQ: HertzU32 = Rate::<u32, 1, 1>::Hz(50);
 const SINE_PERIOD: Duration = Duration::from_micros(1_000_000 / SINE_FREQ.to_Hz() as u64);
 // 5% margin
 const PERIOD_MARGIN: Duration = Duration::from_micros(SINE_PERIOD.as_micros() / 20);
-const PWM_FREQ: HertzU32 = Rate::<u32, 1, 1>::kHz(18);
+const PWM_FREQ: HertzU32 = Rate::<u32, 1, 1>::kHz(24);
 
 static TEST_PIN: Mutex<RefCell<Option<Gpio8<Output<PushPull>>>>> = Mutex::new(RefCell::new(None));
 
@@ -59,7 +59,8 @@ async fn main(_spawner: Spawner) -> ! {
     let rmt_buffer = smartLedBuffer!(1);
     let mut led = SmartLedsAdapter::new(rmt.channel0, io.pins.gpio7, rmt_buffer);
 
-    let pwm = io.pins.gpio6.into_push_pull_output();
+    let pwm_high = io.pins.gpio5.into_push_pull_output();
+    let pwm_low = io.pins.gpio6.into_push_pull_output();
 
     let test_pin = io.pins.gpio8.into_push_pull_output();
     critical_section::with(|cs| {
@@ -86,11 +87,20 @@ async fn main(_spawner: Spawner) -> ! {
             })
             .unwrap();
 
-        let mut channel0 = ledc.get_channel(channel::Number::Channel0, pwm);
+        let mut channel0 = ledc.get_channel(channel::Number::Channel0, pwm_high);
         channel0
             .configure(channel::config::Config {
                 timer: &lstimer0,
-                duty_pct: 75,
+                duty_pct: 50,
+                pin_config: channel::config::PinConfig::PushPull,
+            })
+            .unwrap();
+
+        let mut channel1 = ledc.get_channel(channel::Number::Channel1, pwm_low);
+        channel1
+            .configure(channel::config::Config {
+                timer: &lstimer0,
+                duty_pct: 50,
                 pin_config: channel::config::PinConfig::PushPull,
             })
             .unwrap();
@@ -123,9 +133,9 @@ async fn main(_spawner: Spawner) -> ! {
                     critical_section::with(|cs| {
                         CURRENT_PHASE.replace(cs, 0);
                     });
-                    println!("HIGH");
+                    // println!("HIGH");
                 } else {
-                    println!("LOW");
+                    // println!("LOW");
                 }
                 led.write(brightness(
                     gamma([RGB { r: 0, g: 255, b: 0 }].iter().cloned()),
@@ -142,7 +152,7 @@ async fn main(_spawner: Spawner) -> ! {
                     50,
                 ))
                 .unwrap();
-                println!("Timeout");
+                // println!("Timeout");
             }
         }
     }
