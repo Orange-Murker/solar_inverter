@@ -15,7 +15,7 @@ use embassy_time::{Duration, Timer};
 use embedded_hal_async::digital::Wait;
 use esp_backtrace as _;
 use esp_hal_smartled::{smartLedBuffer, SmartLedsAdapter};
-// use esp_println::println;
+use esp_println::println;
 use fugit::{HertzU32, Rate};
 use hal::{
     clock::ClockControl,
@@ -42,8 +42,6 @@ const SINE_PERIOD: Duration = Duration::from_micros(1_000_000 / SINE_FREQ.to_Hz(
 const PERIOD_MARGIN: Duration = Duration::from_micros(SINE_PERIOD.as_micros() / 20);
 const PWM_FREQ: HertzU32 = Rate::<u32, 1, 1>::kHz(24);
 
-static TEST_PIN: Mutex<RefCell<Option<Gpio8<Output<PushPull>>>>> = Mutex::new(RefCell::new(None));
-
 #[main]
 async fn main(_spawner: Spawner) {
     // #[entry]
@@ -60,15 +58,11 @@ async fn main(_spawner: Spawner) {
     // Setup PWM
     let rmt = Rmt::new(peripherals.RMT, 80u32.MHz(), &clocks).expect("Could not initialize RMT");
     let rmt_buffer = smartLedBuffer!(1);
-    let mut led = SmartLedsAdapter::new(rmt.channel0, io.pins.gpio7, rmt_buffer);
+    let mut led = SmartLedsAdapter::new(rmt.channel0, io.pins.gpio5, rmt_buffer);
 
-    let pwm_high = io.pins.gpio5.into_push_pull_output();
-    let pwm_low = io.pins.gpio6.into_push_pull_output();
+    let pwm_high = io.pins.gpio25.into_push_pull_output();
+    let pwm_low = io.pins.gpio33.into_push_pull_output();
 
-    let test_pin = io.pins.gpio8.into_push_pull_output();
-    critical_section::with(|cs| {
-        TEST_PIN.replace(cs, Some(test_pin));
-    });
 
     let mut zero_cross_pin = io.pins.gpio10.into_floating_input();
     interrupt::enable(Interrupt::GPIO, Priority::Priority2)
@@ -84,7 +78,7 @@ async fn main(_spawner: Spawner) {
 
         hstimer0
             .configure(timer::config::Config {
-                duty: timer::config::Duty::Duty5Bit,
+                duty: timer::config::Duty::Duty8Bit,
                 clock_source: timer::HSClockSource::APBClk,
                 frequency: 24u32.kHz(),
             })
@@ -116,7 +110,7 @@ async fn main(_spawner: Spawner) {
 
         // Enable the LEDC interrupt on every timer overflow
         ledc.int_ena()
-            .modify(|_, w| w.lstimer0_ovf_int_ena().set_bit());
+            .modify(|_, w| w.hstimer0_ovf_int_ena().set_bit());
         interrupt::enable(Interrupt::LEDC, Priority::Priority3)
             .expect("Could not enable the LEDC interrupt");
     }
