@@ -16,18 +16,18 @@ pub static CURRENT_PHASE: Mutex<RefCell<i32>> = Mutex::new(RefCell::new(0));
 pub static SYNC_TIMEOUT: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(true));
 
 fn set_high_side(ledc: &LEDC) {
-    ledc.ch1_conf0().modify(|_, w| w.sig_out_en().clear_bit());
-    ledc.ch0_conf0().modify(|_, w| w.sig_out_en().set_bit());
+    ledc.hsch1_conf0().modify(|_, w| w.sig_out_en().clear_bit());
+    ledc.hsch0_conf0().modify(|_, w| w.sig_out_en().set_bit());
 }
 
 fn set_low_side(ledc: &LEDC) {
-    ledc.ch0_conf0().modify(|_, w| w.sig_out_en().clear_bit());
-    ledc.ch1_conf0().modify(|_, w| w.sig_out_en().set_bit());
+    ledc.hsch0_conf0().modify(|_, w| w.sig_out_en().clear_bit());
+    ledc.hsch1_conf0().modify(|_, w| w.sig_out_en().set_bit());
 }
 
 fn disable_output(ledc: &LEDC) {
-    ledc.ch0_conf0().modify(|_, w| w.sig_out_en().clear_bit());
-    ledc.ch1_conf0().modify(|_, w| w.sig_out_en().clear_bit());
+    ledc.hsch0_conf0().modify(|_, w| w.sig_out_en().clear_bit());
+    ledc.hsch1_conf0().modify(|_, w| w.sig_out_en().clear_bit());
 }
 
 #[interrupt]
@@ -60,8 +60,8 @@ fn LEDC() {
             disable_output(&ledc);
         } else if high_side {
             set_high_side(&ledc);
-            ledc.ch0_duty().write(|w| unsafe { w.bits(duty << 4) });
-            ledc.ch0_conf1().write(|w| unsafe {
+            ledc.hsch0_duty().write(|w| unsafe { w.bits(duty << 4) });
+            ledc.hsch0_conf1().write(|w| unsafe {
                 w.duty_start()
                     .set_bit()
                     .duty_inc()
@@ -75,8 +75,8 @@ fn LEDC() {
             });
         } else {
             set_low_side(&ledc);
-            ledc.ch1_duty().write(|w| unsafe { w.bits(duty << 4) });
-            ledc.ch1_conf1().write(|w| unsafe {
+            ledc.hsch1_duty().write(|w| unsafe { w.bits(duty << 4) });
+            ledc.hsch1_conf1().write(|w| unsafe {
                 w.duty_start()
                     .set_bit()
                     .duty_inc()
@@ -89,8 +89,6 @@ fn LEDC() {
                     .bits(0x0)
             });
         }
-        ledc.ch0_conf0().modify(|_, w| w.para_up().set_bit());
-        ledc.ch1_conf0().modify(|_, w| w.para_up().set_bit());
     });
 
     let new_phase = phase.wrapping_add(PHASE_CHANGE_PER_UPDATE as i32);

@@ -25,11 +25,11 @@ use hal::{
     ledc::{
         channel::{self, ChannelIFace},
         timer::{self, TimerIFace},
-        LSGlobalClkSource, LowSpeed, LEDC,
+        HighSpeed, LSGlobalClkSource, LEDC,
     },
     peripherals::{Interrupt, Peripherals},
     prelude::*,
-    systimer::SystemTimer,
+    timer::TimerGroup,
     Rmt,
 };
 use smart_leds::{brightness, gamma};
@@ -45,16 +45,19 @@ const PWM_FREQ: HertzU32 = Rate::<u32, 1, 1>::kHz(24);
 static TEST_PIN: Mutex<RefCell<Option<Gpio8<Output<PushPull>>>>> = Mutex::new(RefCell::new(None));
 
 #[main]
-async fn main(_spawner: Spawner) -> ! {
+async fn main(_spawner: Spawner) {
     // #[entry]
     // fn main() -> ! {
     let peripherals = Peripherals::take();
     let system = peripherals.SYSTEM.split();
     let clocks = ClockControl::boot_defaults(system.clock_control).freeze();
 
-    embassy::init(&clocks, SystemTimer::new(peripherals.SYSTIMER));
+    let timer_group0 = TimerGroup::new(peripherals.TIMG0, &clocks);
+    embassy::init(&clocks, timer_group0.timer0);
 
     let io = IO::new(peripherals.GPIO, peripherals.IO_MUX);
+
+    // Setup PWM
     let rmt = Rmt::new(peripherals.RMT, 80u32.MHz(), &clocks).expect("Could not initialize RMT");
     let rmt_buffer = smartLedBuffer!(1);
     let mut led = SmartLedsAdapter::new(rmt.channel0, io.pins.gpio7, rmt_buffer);
@@ -77,20 +80,20 @@ async fn main(_spawner: Spawner) -> ! {
 
         ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
 
-        let mut lstimer0 = ledc.get_timer::<LowSpeed>(timer::Number::Timer0);
+        let mut hstimer0 = ledc.get_timer::<HighSpeed>(timer::Number::Timer0);
 
-        lstimer0
+        hstimer0
             .configure(timer::config::Config {
-                duty: timer::config::Duty::Duty8Bit,
-                clock_source: timer::LSClockSource::APBClk,
-                frequency: PWM_FREQ,
+                duty: timer::config::Duty::Duty5Bit,
+                clock_source: timer::HSClockSource::APBClk,
+                frequency: 24u32.kHz(),
             })
             .unwrap();
 
         let mut channel0 = ledc.get_channel(channel::Number::Channel0, pwm_high);
         channel0
             .configure(channel::config::Config {
-                timer: &lstimer0,
+                timer: &hstimer0,
                 duty_pct: 50,
                 pin_config: channel::config::PinConfig::PushPull,
             })
@@ -99,7 +102,7 @@ async fn main(_spawner: Spawner) -> ! {
         let mut channel1 = ledc.get_channel(channel::Number::Channel1, pwm_low);
         channel1
             .configure(channel::config::Config {
-                timer: &lstimer0,
+                timer: &hstimer0,
                 duty_pct: 50,
                 pin_config: channel::config::PinConfig::PushPull,
             })
@@ -107,14 +110,14 @@ async fn main(_spawner: Spawner) -> ! {
     }
 
     {
-        // The peripherals doe not implement into_inner() so we have to steal it here
+        // The peripherals do not implement into_inner() so we have to steal it here
         // This is fine because we only have one reference as the old reference is not accessible anymore
         let ledc = unsafe { Peripherals::steal().LEDC };
 
         // Enable the LEDC interrupt on every timer overflow
         ledc.int_ena()
             .modify(|_, w| w.lstimer0_ovf_int_ena().set_bit());
-        interrupt::enable(Interrupt::LEDC, Priority::Priority5)
+        interrupt::enable(Interrupt::LEDC, Priority::Priority3)
             .expect("Could not enable the LEDC interrupt");
     }
 
