@@ -31,10 +31,10 @@ jobs:
       - name: Enable caching
         uses: Swatinem/rust-cache@v2
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@v1
+        uses: esp-rs/xtensa-toolchain@v1.5
         with:
-          target: riscv32imc-unknown-none-elf
-          toolchain: nightly
-          components: rust-src, rustfmt, clippy
+          default: true
+          buildtargets: esp32
+          ldproxy: false
       - name: Run command
         run: cargo ${{ matrix.action.command }} ${{ matrix.action.args }}

@@ -3,94 +3,99 @@
 #![feature(type_alias_impl_trait)]
 #![allow(clippy::empty_loop)]
 
+mod control;
 mod ledc;
 
 use core::cell::RefCell;
 
-use crate::ledc::{CURRENT_PHASE, SYNC_TIMEOUT};
+use control::{adc_pll_task, AdcTaskResources};
 use critical_section::Mutex;
-use embassy_executor::Spawner;
-use embassy_futures::select::{select, Either};
-use embassy_time::{Duration, Timer};
-use embedded_hal_async::digital::Wait;
 use esp_backtrace as _;
-use esp_hal_smartled::{smartLedBuffer, SmartLedsAdapter};
-// use esp_println::println;
 use fugit::{HertzU32, Rate};
+use hal::cpu_control::{CpuControl, Stack};
+use hal::dac::DAC1;
 use hal::{
+    adc::{AdcConfig, Attenuation, ADC},
+    analog::ADC1,
     clock::ClockControl,
-    embassy,
-    gpio::{Gpio8, Output, PushPull, IO},
+    gpio::IO,
     interrupt::{self, Priority},
     ledc::{
         channel::{self, ChannelIFace},
         timer::{self, TimerIFace},
-        LSGlobalClkSource, LowSpeed, LEDC,
+        HighSpeed, LEDC,
     },
-    peripherals::{Interrupt, Peripherals},
+    peripherals::{Interrupt, Peripherals, TIMG1},
     prelude::*,
-    systimer::SystemTimer,
-    Rmt,
+    timer::{Timer, Timer0, TimerGroup},
 };
-use smart_leds::{brightness, gamma};
-use smart_leds_trait::{SmartLedsWrite, RGB};
 
 // PWM frequency should ideally be a multiple of the sine wave frequency
 const SINE_FREQ: HertzU32 = Rate::<u32, 1, 1>::Hz(50);
-const SINE_PERIOD: Duration = Duration::from_micros(1_000_000 / SINE_FREQ.to_Hz() as u64);
-// 5% margin
-const PERIOD_MARGIN: Duration = Duration::from_micros(SINE_PERIOD.as_micros() / 20);
 const PWM_FREQ: HertzU32 = Rate::<u32, 1, 1>::kHz(24);
 
-static TEST_PIN: Mutex<RefCell<Option<Gpio8<Output<PushPull>>>>> = Mutex::new(RefCell::new(None));
+static mut APP_CORE_STACK: Stack<8192> = Stack::new();
 
-#[main]
-async fn main(_spawner: Spawner) -> ! {
-    // #[entry]
-    // fn main() -> ! {
+pub static TIMER10: Mutex<RefCell<Option<Timer<Timer0<TIMG1>>>>> = Mutex::new(RefCell::new(None));
+
+#[entry]
+fn main() -> ! {
     let peripherals = Peripherals::take();
     let system = peripherals.SYSTEM.split();
     let clocks = ClockControl::boot_defaults(system.clock_control).freeze();
 
-    embassy::init(&clocks, SystemTimer::new(peripherals.SYSTIMER));
+    let timer_group1 = TimerGroup::new(peripherals.TIMG1, &clocks);
+    let timer10 = timer_group1.timer0;
 
     let io = IO::new(peripherals.GPIO, peripherals.IO_MUX);
-    let rmt = Rmt::new(peripherals.RMT, 80u32.MHz(), &clocks).expect("Could not initialize RMT");
-    let rmt_buffer = smartLedBuffer!(1);
-    let mut led = SmartLedsAdapter::new(rmt.channel0, io.pins.gpio7, rmt_buffer);
 
-    let pwm_high = io.pins.gpio5.into_push_pull_output();
-    let pwm_low = io.pins.gpio6.into_push_pull_output();
+    let test_pin = io.pins.gpio12.into_push_pull_output();
 
-    let test_pin = io.pins.gpio8.into_push_pull_output();
-    critical_section::with(|cs| {
-        TEST_PIN.replace(cs, Some(test_pin));
-    });
+    // Configure ADC
+    let analog = peripherals.SENS.split();
+    let v_grid_pin_pos = io.pins.gpio32.into_analog();
+    let v_grid_pin_neg = io.pins.gpio33.into_analog();
+    let mut adc1_config = AdcConfig::new();
 
-    let mut zero_cross_pin = io.pins.gpio10.into_floating_input();
-    interrupt::enable(Interrupt::GPIO, Priority::Priority2)
-        .expect("Could not enable the GPIO interrupt");
+    let v_grid_adc_pin_pos = adc1_config.enable_pin(v_grid_pin_pos, Attenuation::Attenuation0dB);
+    let v_grid_adc_pin_neg = adc1_config.enable_pin(v_grid_pin_neg, Attenuation::Attenuation0dB);
+
+    let adc1 = ADC::<ADC1>::adc(analog.adc1, adc1_config).unwrap();
+
+    let dac_pin = io.pins.gpio25.into_analog();
+    let dac1 = DAC1::dac(analog.dac1, dac_pin).unwrap();
+
+    {
+        let peripherals = unsafe { Peripherals::steal() };
+
+        // Invert data
+        peripherals
+            .SENS
+            .sar_read_ctrl()
+            .modify(|_, w| w.sar1_data_inv().set_bit());
+    }
+
+    let pwm_high = io.pins.gpio18.into_push_pull_output();
+    let pwm_low = io.pins.gpio19.into_push_pull_output();
 
     // Using a scope to make sure that the LEDC struct cannot be used after setting up the peripheral
     {
-        let mut ledc = LEDC::new(peripherals.LEDC, &clocks);
+        let ledc = LEDC::new(peripherals.LEDC, &clocks);
 
-        ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
+        let mut hstimer0 = ledc.get_timer::<HighSpeed>(timer::Number::Timer0);
 
-        let mut lstimer0 = ledc.get_timer::<LowSpeed>(timer::Number::Timer0);
-
-        lstimer0
+        hstimer0
             .configure(timer::config::Config {
                 duty: timer::config::Duty::Duty8Bit,
-                clock_source: timer::LSClockSource::APBClk,
-                frequency: PWM_FREQ,
+                clock_source: timer::HSClockSource::APBClk,
+                frequency: 24u32.kHz(),
             })
             .unwrap();
 
         let mut channel0 = ledc.get_channel(channel::Number::Channel0, pwm_high);
         channel0
             .configure(channel::config::Config {
-                timer: &lstimer0,
+                timer: &hstimer0,
                 duty_pct: 50,
                 pin_config: channel::config::PinConfig::PushPull,
             })
@@ -99,7 +104,7 @@ async fn main(_spawner: Spawner) -> ! {
         let mut channel1 = ledc.get_channel(channel::Number::Channel1, pwm_low);
         channel1
             .configure(channel::config::Config {
-                timer: &lstimer0,
+                timer: &hstimer0,
                 duty_pct: 50,
                 pin_config: channel::config::PinConfig::PushPull,
             })
@@ -107,53 +112,33 @@ async fn main(_spawner: Spawner) -> ! {
     }
 
     {
-        // The peripherals doe not implement into_inner() so we have to steal it here
+        // The peripherals do not implement into_inner() so we have to steal it here
         // This is fine because we only have one reference as the old reference is not accessible anymore
         let ledc = unsafe { Peripherals::steal().LEDC };
 
         // Enable the LEDC interrupt on every timer overflow
         ledc.int_ena()
-            .modify(|_, w| w.lstimer0_ovf_int_ena().set_bit());
-        interrupt::enable(Interrupt::LEDC, Priority::Priority5)
+            .modify(|_, w| w.hstimer0_ovf_int_ena().set_bit());
+        interrupt::enable(Interrupt::LEDC, Priority::Priority3)
             .expect("Could not enable the LEDC interrupt");
     }
 
-    loop {
-        let zero_cross_future = zero_cross_pin.wait_for_any_edge();
-        let timeout_future = Timer::after(SINE_PERIOD.checked_add(PERIOD_MARGIN).unwrap());
-        let select_result = select(zero_cross_future, timeout_future).await;
-        match select_result {
-            Either::First(zero_cross_future) => {
-                zero_cross_future.unwrap();
+    let mut adc_task_resources = AdcTaskResources {
+        timer: timer10,
+        adc: adc1,
+        dac: dac1,
+        test_pin,
+        v_grid_adc_pin_pos,
+        v_grid_adc_pin_neg,
+    };
 
-                critical_section::with(|cs| {
-                    SYNC_TIMEOUT.replace(cs, false);
-                });
-                if zero_cross_pin.is_input_high() {
-                    critical_section::with(|cs| {
-                        CURRENT_PHASE.replace(cs, 0);
-                    });
-                    // println!("HIGH");
-                } else {
-                    // println!("LOW");
-                }
-                led.write(brightness(
-                    gamma([RGB { r: 0, g: 255, b: 0 }].iter().cloned()),
-                    50,
-                ))
-                .unwrap();
-            }
-            Either::Second(_) => {
-                critical_section::with(|cs| {
-                    SYNC_TIMEOUT.replace(cs, true);
-                });
-                led.write(brightness(
-                    gamma([RGB { r: 255, g: 0, b: 0 }].iter().cloned()),
-                    50,
-                ))
-                .unwrap();
-                // println!("Timeout");
-            }
-        }
-    }
+    let mut cpu_control = CpuControl::new(system.cpu_control);
+    let cpu1_fnctn = || {
+        adc_pll_task(&mut adc_task_resources);
+    };
+    let _guard = cpu_control
+        .start_app_core(unsafe { &mut APP_CORE_STACK }, cpu1_fnctn)
+        .unwrap();
+
+    loop {}
 }
