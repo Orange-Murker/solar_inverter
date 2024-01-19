@@ -40,8 +40,9 @@ fn LEDC() {
 
     let phase = critical_section::with(|cs| CURRENT_PHASE.take(cs));
 
-    let sin = idsp::cossin(phase).1 as i64;
-    let duty = ((sin.abs() * 255) / i32::MAX as i64) as u32;
+    let sin = idsp::cossin(phase).0 as i64;
+    // 95% duty cycle max
+    let duty = ((sin.abs() * 242) / i32::MAX as i64) as u32;
     let high_side = sin > 0;
 
     // Disable the output on timeout
@@ -86,5 +87,4 @@ fn LEDC() {
     critical_section::with(|cs| {
         CURRENT_PHASE.replace(cs, new_phase);
     });
-
 }

@@ -190,19 +190,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f878075b9794c1e4ac788c95b728f26aa6366d32eeb10c7051389f898f7d067"
 
 [[package]]
-name = "embassy-sync"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd938f25c0798db4280fcd8026bf4c2f48789aebf8f77b6e5cf8a7693ba114ec"
-dependencies = [
- "cfg-if",
- "critical-section",
- "embedded-io-async",
- "futures-util",
- "heapless",
-]
-
-[[package]]
 name = "embassy-time"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -215,15 +202,6 @@ dependencies = [
  "embedded-hal-async",
  "futures-util",
  "heapless",
-]
-
-[[package]]
-name = "embedded-can"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e9d2e857f87ac832df68fa498d18ddc679175cf3d2e4aa893988e5601baf9438"
-dependencies = [
- "nb 1.1.0",
 ]
 
 [[package]]
@@ -258,31 +236,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b5ad4a01f9cb38117ef85f5cd32176d63875e7eab99c5b60e8492bfdc16dd63"
 dependencies = [
  "embedded-hal 1.0.0-rc.2",
-]
-
-[[package]]
-name = "embedded-hal-nb"
-version = "1.0.0-rc.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "67c4325112d63ff5991e2841960a1320516c33ff7237e924eaab0772b1123703"
-dependencies = [
- "embedded-hal 1.0.0-rc.2",
- "nb 1.1.0",
-]
-
-[[package]]
-name = "embedded-io"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "edd0f118536f44f5ccd48bcb8b111bdc3de888b58c74639dfb034a357d0f206d"
-
-[[package]]
-name = "embedded-io-async"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ff09972d4073aa8c299395be75161d582e7629cd663171d62af73c8d50dba3f"
-dependencies = [
- "embedded-io",
 ]
 
 [[package]]
@@ -346,17 +299,8 @@ dependencies = [
  "cfg-if",
  "critical-section",
  "embassy-executor",
- "embassy-futures",
- "embassy-sync",
- "embassy-time",
- "embedded-can",
  "embedded-dma",
  "embedded-hal 0.2.7",
- "embedded-hal 1.0.0-rc.2",
- "embedded-hal-async",
- "embedded-hal-nb",
- "embedded-io",
- "embedded-io-async",
  "enumset",
  "esp-hal-procmacros",
  "esp32",
@@ -424,7 +368,6 @@ version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c1a4dd97ac2ea1572434d5353a6bdeb86072d7864f9018221e7a04b5aa52689"
 dependencies = [
- "embassy-time",
  "esp-hal-common",
 ]
 
@@ -561,6 +504,12 @@ name = "memchr"
 version = "2.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "523dc4f511e55ab87b694dc30d0f820d60906ef06413f93d4d7a1385599cc149"
+
+[[package]]
+name = "micromath"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c3c8dda44ff03a2f238717214da50f65d5a53b45cd213a7370424ffdb6fae815"
 
 [[package]]
 name = "minijinja"
@@ -783,6 +732,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "sogi_pll"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "31fe8727a39deff6e8b3cebbf13629353fb04f728f5717a138adf4344996cb62"
+dependencies = [
+ "micromath",
+]
+
+[[package]]
 name = "solar_inverter"
 version = "0.1.0"
 dependencies = [
@@ -797,8 +755,10 @@ dependencies = [
  "esp32-hal",
  "fugit",
  "idsp",
+ "micromath",
  "smart-leds",
  "smart-leds-trait",
+ "sogi_pll",
 ]
 
 [[package]]
