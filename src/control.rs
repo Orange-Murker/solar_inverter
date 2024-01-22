@@ -7,12 +7,13 @@ use hal::{
     analog::ADC1,
     dac::DAC1,
     efuse::{Efuse, ADC_VREF},
-    gpio::{Analog, Gpio13, GpioPin, Output, PushPull},
+    gpio::{Analog, Floating, Gpio13, GpioPin, Input, Output, PushPull},
     peripherals::TIMG1,
     prelude::{nb::block, *},
     timer::Timer0,
     Timer,
 };
+use idsp::cossin;
 use sogi_pll::{PllConfig, SogiPll};
 
 use crate::{ledc::CURRENT_PHASE, SINE_FREQ};
@@ -21,11 +22,12 @@ const IDEAL_VREF: u32 = 1100;
 
 const OMEGA_ZERO: f32 = 2.0 * PI * SINE_FREQ.to_Hz() as f32;
 
-const SAMPLE_RATE: HertzU64 = Rate::<u64, 1, 1>::Hz(5000);
+const SAMPLE_RATE: HertzU64 = Rate::<u64, 1, 1>::Hz(10000);
 const SAMPLE_TIME_DURATION: MicrosDurationU64 = Duration::<u64, 1, 1000000>::from_rate(SAMPLE_RATE);
 const SAMPLE_TIME: f32 = 1.0 / SAMPLE_RATE.to_Hz() as f32;
+
 // const RAD_TO_DEG: f32 = 1.0 / (2.0 * PI);
-const MV_TO_V: f32 = 1.0 / 1000.0;
+// const MV_TO_V: f32 = 1.0 / 1000.0;
 const PI2: f32 = PI * 2.0;
 
 pub fn f32_to_idsp(x: f32) -> i32 {
@@ -54,13 +56,13 @@ fn read_actual_vref() -> u32 {
     (IDEAL_VREF as i32 + (value as i32 * 7)) as u32
 }
 
-/// Correct for 0dB attenuation
-fn adc_to_v(measurement: u16, vref: u32) -> f32 {
-    let coef_a = (vref * 57431) / 4096;
-    let coef_b = 75;
-
-    (((coef_a * measurement as u32 + (65536 / 2)) / 65535) + coef_b) as f32 * MV_TO_V
-}
+// /// Correct for 0dB attenuation
+// fn adc_to_v(measurement: u16, vref: u32) -> f32 {
+//     let coef_a = (vref * 57431) / 4096;
+//     let coef_b = 75;
+//
+//     (((coef_a * measurement as u32 + (65536 / 2)) / 65535) + coef_b) as f32 * MV_TO_V
+// }
 
 pub struct AdcTaskResources<'a> {
     pub timer: Timer<Timer0<TIMG1>>,
@@ -69,6 +71,7 @@ pub struct AdcTaskResources<'a> {
     pub test_pin: Gpio13<Output<PushPull>>,
     pub v_grid_adc_pin_pos: AdcPin<GpioPin<Analog, 32>, ADC1>,
     pub v_grid_adc_pin_neg: AdcPin<GpioPin<Analog, 33>, ADC1>,
+    pub grid_zero_pin: GpioPin<Input<Floating>, 34>,
 }
 
 pub fn adc_pll_task(res: &mut AdcTaskResources) -> ! {
@@ -90,21 +93,25 @@ pub fn adc_pll_task(res: &mut AdcTaskResources) -> ! {
     loop {
         res.test_pin.set_high().unwrap();
 
-        let v_grid_pos = adc_to_v(
-            nb::block!(res.adc.read(&mut res.v_grid_adc_pin_pos)).unwrap(),
-            vref,
-        );
-        let v_grid_neg = adc_to_v(
-            nb::block!(res.adc.read(&mut res.v_grid_adc_pin_neg)).unwrap(),
-            vref,
-        );
-        let v_grid = v_grid_pos - v_grid_neg;
+        // let v_grid_pos = adc_to_v(
+        //     nb::block!(res.adc.read(&mut res.v_grid_adc_pin_pos)).unwrap(),
+        //     vref,
+        // );
+        // let v_grid_neg = adc_to_v(
+        //     nb::block!(res.adc.read(&mut res.v_grid_adc_pin_neg)).unwrap(),
+        //     vref,
+        // );
+        // let v_grid = v_grid_pos - v_grid_neg;
         // println!("{}, {}", v_grid_pos, v_grid_neg);
+
+        let high = res.grid_zero_pin.is_input_high();
+        let v_grid = if high { 1.0 } else { -1.0 };
 
         let pll_result = pll.update(v_grid);
 
+        let idsp_phase = f32_to_idsp(pll_result.theta);
         critical_section::with(|cs| {
-            CURRENT_PHASE.replace(cs, f32_to_idsp(pll_result.theta));
+            CURRENT_PHASE.replace(cs, idsp_phase);
         });
 
         // let freq_hz = pll_result.omega * RAD_TO_DEG;
@@ -112,7 +119,10 @@ pub fn adc_pll_task(res: &mut AdcTaskResources) -> ! {
         // let v_rms = pll_result.v_rms();
 
         // res.dac.write(((pll_result.theta / (2.0 * PI)) * 254.0) as u8);
-        res.dac.write((v_grid * 200.0 + 120.0) as u8);
+        // res.dac.write((v_grid * 200.0 + 120.0) as u8);
+        // println!("{high}");
+        // res.dac.write(high as u8 * 255);
+        res.dac.write((cossin(idsp_phase).0 / 16777216 + 128) as u8);
 
         res.test_pin.set_low().unwrap();
 

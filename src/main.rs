@@ -55,6 +55,8 @@ fn main() -> ! {
 
     let test_pin = io.pins.gpio13.into_push_pull_output();
 
+    let grid_zero_pin = io.pins.gpio34.into_floating_input();
+
     // Configure ADC
     let analog = peripherals.SENS.split();
     let v_grid_pin_pos = io.pins.gpio32.into_analog();
@@ -148,6 +150,7 @@ fn main() -> ! {
         test_pin,
         v_grid_adc_pin_pos,
         v_grid_adc_pin_neg,
+        grid_zero_pin,
     };
 
     let mut cpu_control = CpuControl::new(system.cpu_control);
