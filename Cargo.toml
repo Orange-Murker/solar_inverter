@@ -6,7 +6,7 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-hal = { package = "esp32-hal", version = "0.17.0", features = []}
+hal = { package = "esp32-hal", version = "0.17.0", features = ["eh1"]}
 esp-backtrace = { version = "0.10.0", features = ["esp32", "panic-handler", "exception-handler", "print-uart"] }
 esp-println = { version = "0.8.0", features = ["esp32"] }
 esp-hal-smartled = { version = "0.7.0", features = ["esp32"] }
@@ -16,9 +16,10 @@ smart-leds-trait = "0.2.1"
 embassy-executor = { version = "0.4.0", features = ["nightly"] }
 embassy-time = "0.2,0"
 embassy-futures = "0.1.1"
-embedded-hal-async = "=1.0.0-rc.2"
+embedded-hal = "=1.0.0-rc.2"
 idsp = "0.14.1"
 fugit = "0.3.7"
 critical-section = "1.1.2"
 micromath = "2.1.0"
 sogi_pll = "0.2.0"
+ads1x1x = "0.2.2"

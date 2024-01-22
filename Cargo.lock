@@ -3,6 +3,16 @@
 version = 3
 
 [[package]]
+name = "ads1x1x"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6b44310e48193933db0cd788961f450a86f35fdad022e4373883fa8e4640488e"
+dependencies = [
+ "embedded-hal 0.2.7",
+ "nb 1.1.0",
+]
+
+[[package]]
 name = "aho-corasick"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -205,6 +215,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "embedded-can"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e9d2e857f87ac832df68fa498d18ddc679175cf3d2e4aa893988e5601baf9438"
+dependencies = [
+ "nb 1.1.0",
+]
+
+[[package]]
 name = "embedded-dma"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -236,6 +255,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b5ad4a01f9cb38117ef85f5cd32176d63875e7eab99c5b60e8492bfdc16dd63"
 dependencies = [
  "embedded-hal 1.0.0-rc.2",
+]
+
+[[package]]
+name = "embedded-hal-nb"
+version = "1.0.0-rc.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "67c4325112d63ff5991e2841960a1320516c33ff7237e924eaab0772b1123703"
+dependencies = [
+ "embedded-hal 1.0.0-rc.2",
+ "nb 1.1.0",
 ]
 
 [[package]]
@@ -299,8 +328,11 @@ dependencies = [
  "cfg-if",
  "critical-section",
  "embassy-executor",
+ "embedded-can",
  "embedded-dma",
  "embedded-hal 0.2.7",
+ "embedded-hal 1.0.0-rc.2",
+ "embedded-hal-nb",
  "enumset",
  "esp-hal-procmacros",
  "esp32",
@@ -744,11 +776,12 @@ dependencies = [
 name = "solar_inverter"
 version = "0.1.0"
 dependencies = [
+ "ads1x1x",
  "critical-section",
  "embassy-executor",
  "embassy-futures",
  "embassy-time",
- "embedded-hal-async",
+ "embedded-hal 1.0.0-rc.2",
  "esp-backtrace",
  "esp-hal-smartled",
  "esp-println",

@@ -1,13 +1,13 @@
 use core::f32::consts::{FRAC_1_PI, PI};
 use esp_println::println;
-use fugit::{Duration, Rate};
+use fugit::{Duration, HertzU64, MicrosDurationU64, Rate};
 
 use hal::{
     adc::{AdcPin, ADC},
     analog::ADC1,
     dac::DAC1,
     efuse::{Efuse, ADC_VREF},
-    gpio::{Analog, Gpio12, GpioPin, Output, PushPull},
+    gpio::{Analog, Gpio13, GpioPin, Output, PushPull},
     peripherals::TIMG1,
     prelude::{nb::block, *},
     timer::Timer0,
@@ -21,9 +21,8 @@ const IDEAL_VREF: u32 = 1100;
 
 const OMEGA_ZERO: f32 = 2.0 * PI * SINE_FREQ.to_Hz() as f32;
 
-const SAMPLE_RATE: Rate<u64, 1, 1> = Rate::<u64, 1, 1>::Hz(5000);
-const SAMPLE_TIME_DURATION: Duration<u64, 1, 1000000> =
-    Duration::<u64, 1, 1000000>::from_rate(SAMPLE_RATE);
+const SAMPLE_RATE: HertzU64 = Rate::<u64, 1, 1>::Hz(5000);
+const SAMPLE_TIME_DURATION: MicrosDurationU64 = Duration::<u64, 1, 1000000>::from_rate(SAMPLE_RATE);
 const SAMPLE_TIME: f32 = 1.0 / SAMPLE_RATE.to_Hz() as f32;
 // const RAD_TO_DEG: f32 = 1.0 / (2.0 * PI);
 const MV_TO_V: f32 = 1.0 / 1000.0;
@@ -63,16 +62,16 @@ fn adc_to_v(measurement: u16, vref: u32) -> f32 {
     (((coef_a * measurement as u32 + (65536 / 2)) / 65535) + coef_b) as f32 * MV_TO_V
 }
 
-pub struct AdcTaskResources {
+pub struct AdcTaskResources<'a> {
     pub timer: Timer<Timer0<TIMG1>>,
-    pub adc: ADC<'static, ADC1>,
-    pub dac: DAC1<'static, hal::analog::DAC1>,
-    pub test_pin: Gpio12<Output<PushPull>>,
+    pub adc: ADC<'a, ADC1>,
+    pub dac: DAC1<'a, hal::analog::DAC1>,
+    pub test_pin: Gpio13<Output<PushPull>>,
     pub v_grid_adc_pin_pos: AdcPin<GpioPin<Analog, 32>, ADC1>,
     pub v_grid_adc_pin_neg: AdcPin<GpioPin<Analog, 33>, ADC1>,
 }
 
-pub fn adc_pll_task(res: &mut AdcTaskResources) {
+pub fn adc_pll_task(res: &mut AdcTaskResources) -> ! {
     let config = PllConfig {
         sample_time: SAMPLE_TIME,
         sogi_k: 1.0,
