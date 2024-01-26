@@ -16,6 +16,7 @@ use fugit::{HertzU32, Rate};
 use hal::cpu_control::{CpuControl, Stack};
 use hal::dac::DAC1;
 use hal::i2c::I2C;
+use hal::Delay;
 use hal::{
     adc::{AdcConfig, Attenuation, ADC},
     analog::ADC1,
@@ -29,7 +30,7 @@ use hal::{
     },
     peripherals::{Interrupt, Peripherals, TIMG1},
     prelude::*,
-    timer::{Timer, Timer0, TimerGroup},
+    timer::{Timer, Timer0},
 };
 use mppt::{mppt_task, MpptTaskResources};
 
@@ -37,7 +38,7 @@ use mppt::{mppt_task, MpptTaskResources};
 const SINE_FREQ: HertzU32 = Rate::<u32, 1, 1>::Hz(50);
 const PWM_FREQ: HertzU32 = Rate::<u32, 1, 1>::kHz(24);
 
-static mut APP_CORE_STACK: Stack<8192> = Stack::new();
+static mut APP_CORE_STACK: Stack<16384> = Stack::new();
 
 pub static TIMER10: Mutex<RefCell<Option<Timer<Timer0<TIMG1>>>>> = Mutex::new(RefCell::new(None));
 
@@ -47,24 +48,19 @@ fn main() -> ! {
     let system = peripherals.SYSTEM.split();
     let clocks = ClockControl::boot_defaults(system.clock_control).freeze();
 
-    let timer_group1 = TimerGroup::new(peripherals.TIMG1, &clocks);
-    let timer10 = timer_group1.timer0;
-    let timer11 = timer_group1.timer1;
+    let delay = Delay::new(&clocks);
+    let delay2 = Delay::new(&clocks);
 
     let io = IO::new(peripherals.GPIO, peripherals.IO_MUX);
 
     let test_pin = io.pins.gpio13.into_push_pull_output();
 
-    let grid_zero_pin = io.pins.gpio34.into_floating_input();
-
     // Configure ADC
     let analog = peripherals.SENS.split();
-    let v_grid_pin_pos = io.pins.gpio32.into_analog();
-    let v_grid_pin_neg = io.pins.gpio33.into_analog();
+    let v_grid_pin = io.pins.gpio35.into_analog();
     let mut adc1_config = AdcConfig::new();
 
-    let v_grid_adc_pin_pos = adc1_config.enable_pin(v_grid_pin_pos, Attenuation::Attenuation0dB);
-    let v_grid_adc_pin_neg = adc1_config.enable_pin(v_grid_pin_neg, Attenuation::Attenuation0dB);
+    let v_grid_adc_pin = adc1_config.enable_pin(v_grid_pin, Attenuation::Attenuation0dB);
 
     let adc1 = ADC::<ADC1>::adc(analog.adc1, adc1_config).unwrap();
 
@@ -122,7 +118,7 @@ fn main() -> ! {
     channel2
         .configure(channel::config::Config {
             timer: &hstimer0,
-            duty_pct: 50,
+            duty_pct: 20,
             pin_config: channel::config::PinConfig::PushPull,
         })
         .unwrap();
@@ -144,13 +140,11 @@ fn main() -> ! {
     let i2c0 = I2C::new(peripherals.I2C0, sda, scl, 50u32.kHz(), &clocks);
 
     let mut adc_task_resources = AdcTaskResources {
-        timer: timer10,
+        delay,
         adc: adc1,
         dac: dac1,
         test_pin,
-        v_grid_adc_pin_pos,
-        v_grid_adc_pin_neg,
-        grid_zero_pin,
+        v_grid_adc_pin,
     };
 
     let mut cpu_control = CpuControl::new(system.cpu_control);
@@ -162,10 +156,11 @@ fn main() -> ! {
         .unwrap();
 
     let mppt_task_resources = MpptTaskResources {
-        timer: timer11,
+        delay: delay2,
         i2c: i2c0,
         boost_pwm: channel2,
     };
 
     mppt_task(mppt_task_resources);
+    // loop {}
 }

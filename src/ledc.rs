@@ -31,6 +31,7 @@ fn disable_output(ledc: &LEDC) {
 }
 
 #[interrupt]
+#[ram(rtc_fast)]
 fn LEDC() {
     // This is fine because we only have one reference as the old reference is not accessible anymore
     // and this is the only interrupt that is using the LEDC peripheral
